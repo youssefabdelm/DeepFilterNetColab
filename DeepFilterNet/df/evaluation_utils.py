@@ -589,10 +589,10 @@ def dnsmos_api_req(url: str, key: str, audio: Tensor, verbose=False) -> Dict[str
     input_data = json.dumps(data)
 
     tries = 0
-    e = ""
-    while tries < 20:
+    timeout = 50
+    while tries < 8:
         try:
-            resp = requests.post(url, data=input_data, headers=headers, timeout=1000)
+            resp = requests.post(url, data=input_data, headers=headers, timeout=timeout)
             score_dict = resp.json()
             if verbose:
                 log_metrics("DNSMOS", score_dict, level="DEBUG")
@@ -601,8 +601,9 @@ def dnsmos_api_req(url: str, key: str, audio: Tensor, verbose=False) -> Dict[str
             if verbose:
                 print(e)
             tries += 1
+            timeout *= 2
             continue
-    raise ValueError(f"Error gettimg mos: {e}")
+    raise ValueError("Error gettimg mos")
 
 
 def as_numpy(x) -> np.ndarray:

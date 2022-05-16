@@ -56,10 +56,10 @@ def main(args):
                 "or via `DNS_AUTH_KEY` os environmental vairable."
             )
         if args.method == "p808":
-            dnsmos = [dnsmos_api_req(URL_P808, key, audio)["mos"]]
+            dnsmos = [dnsmos_api_req(URL_P808, key, audio, verbose=True)["mos"]]
         else:
             dnsmos = [
-                float(dnsmos_api_req(URL_P835, key, audio)[c])
+                float(dnsmos_api_req(URL_P835, key, audio, verbose=True)[c])
                 for c in ("mos_sig", "mos_bak", "mos_ovr")
             ]
     for d in dnsmos:
