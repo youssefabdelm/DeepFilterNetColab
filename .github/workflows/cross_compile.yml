@@ -16,7 +16,6 @@ jobs:
     name: Test Cross Compile
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
         rust: [stable]
         manylinux: [2014]
@@ -35,6 +34,7 @@ jobs:
             arch: aarch64
           - target: armv7-unknown-linux-gnueabihf
             arch: armv7
+      fail-fast: ${{ github.event_name == 'pull_request' }}
     container:
       image: docker://messense/manylinux${{matrix.manylinux}}-cross:${{matrix.platform.arch}}
     steps:
