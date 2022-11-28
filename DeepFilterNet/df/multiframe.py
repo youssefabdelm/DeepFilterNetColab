@@ -1,4 +1,4 @@
-from typing import Final, List
+from typing import List
 
 import torch
 import torch.nn.functional as F
@@ -50,10 +50,10 @@ class MultiFrameModule(nn.Module):
         RTF: Relative transfere function, also called steering vector.
     """
 
-    num_freqs: Final[int]
-    frame_size: Final[int]
-    need_unfold: Final[bool]
-    real: Final[bool]
+    num_freqs: int
+    frame_size: int
+    need_unfold: bool
+    real: bool
 
     def __init__(self, num_freqs: int, frame_size: int, lookahead: int = 0, real: bool = False):
         """Multi-Frame filtering module.
@@ -160,7 +160,7 @@ def df_real(spec: Tensor, coefs: Tensor) -> Tensor:
 class DF(MultiFrameModule):
     """Deep Filtering."""
 
-    conj: Final[bool]
+    conj: bool
 
     def __init__(self, num_freqs: int, frame_size: int, lookahead: int = 0, conj: bool = False):
         super().__init__(num_freqs, frame_size, lookahead)
@@ -183,7 +183,7 @@ class DF(MultiFrameModule):
 class DFreal(MultiFrameModule):
     """Deep Filtering."""
 
-    conj: Final[bool]
+    conj: bool
 
     def __init__(self, num_freqs: int, frame_size: int, lookahead: int = 0, conj: bool = False):
         super().__init__(num_freqs, frame_size, lookahead, real=True)
@@ -221,11 +221,11 @@ class CRM(MultiFrameModule):
 class MfWf(MultiFrameModule):
     """Multi-frame Wiener filter base module."""
 
-    cholesky_decomp: Final[bool]
-    inverse: Final[bool]
-    enforce_constraints: Final[bool]
-    eps: Final[float]
-    dload: Final[float]
+    cholesky_decomp: bool
+    inverse: bool
+    enforce_constraints: bool
+    eps: float
+    dload: float
 
     def __init__(
         self,
@@ -317,11 +317,11 @@ class MfWf(MultiFrameModule):
 class MfMvdr(MultiFrameModule):
     """Multi-frame minimum variance distortionless beamformer based on Rnn**-1 and speech IFC vector."""
 
-    cholesky_decomp: Final[bool]
-    inverse: Final[bool]
-    enforce_constraints: Final[bool]
-    eps: Final[float]
-    dload: Final[float]
+    cholesky_decomp: bool
+    inverse: bool
+    enforce_constraints: bool
+    eps: float
+    dload: float
 
     def __init__(
         self,
