@@ -361,18 +361,17 @@ impl Transform for RandBiquadFilter {
         }
         if self.equalize_rms {
             let rms_new = x.map(|&x| x.powi(2)).mean().unwrap().sqrt();
-            x.mapv_inplace(|x| x * rms / rms_new)
-        } else {
-            // Guard against clipping
-            let max = find_max_abs(x.iter()).unwrap();
-            if (max - 1.) > 1e-10 {
-                let f = 1. / (max + 1e-10);
-                log::debug!(
-                    "RandBiquadFilter: Clipping detected. Reducing gain by: {}",
-                    max
-                );
-                x.mapv_inplace(|s| s * f);
-            }
+            x.mapv_inplace(|s| s * rms / rms_new);
+        }
+        // Guard against clipping
+        let max = find_max_abs(x.iter()).unwrap();
+        if (max - 1.) > 1e-10 {
+            let f = 1. / (max + 1e-10);
+            log::debug!(
+                "RandBiquadFilter: Clipping detected. Reducing gain by: {}",
+                max
+            );
+            x.mapv_inplace(|s| s * f);
         }
         Ok(())
     }
@@ -657,7 +656,7 @@ fn gen_noise_with_scratch(
         noise
     } else {
         // Fast path for white noise
-        Array::random((ch, sr), Normal::new(-1., 1.).unwrap())
+        Array::random((ch, sr), Normal::new(0., 1.).unwrap())
     };
     let f = thread_rng()?.uniform(1.1, 100.) / find_max(&noise).unwrap();
     noise *= f;
@@ -789,11 +788,11 @@ impl RandReverbSim {
         let ref_level: f32 = rir_mono[ref_idx];
         let min_level = 10f32.powf((min_db + ref_level.log10() * 20.) / 20.);
         let mut idx = len;
-        for (i, v) in rir_mono.slice(s![ref_idx..]).indexed_iter() {
-            if v < &min_level {
-                idx = i;
+        for (i, v) in rir_mono.iter().rev().enumerate() {
+            if v.abs() < min_level {
+                idx = len - i;
             } else {
-                idx = len; // reset
+                break;
             }
         }
         rir.slice_collapse(s![.., ..idx]);
@@ -1263,30 +1262,27 @@ mod tests {
 
     #[test]
     pub fn test_compose() -> Result<()> {
-        setup();
-        let reader = ReadWav::new("../assets/clean_freesound_33711.wav")?;
-        let sr = reader.sr as u32;
-        let test_sample = reader.samples_arr2()?;
+        let (test_sample, sr) = setup();
         let ch = test_sample.len_of(Axis(0)) as u16;
         let transforms = Compose::new(vec![
             Box::new(RandRemoveDc::default_with_prob(1.)),
             Box::new(RandLFilt::default_with_prob(1.)),
-            Box::new(RandBiquadFilter::default_with_prob(1.).with_sr(sr as usize)),
-            Box::new(RandResample::default_with_prob(1.).with_sr(sr as usize)),
+            Box::new(RandBiquadFilter::default_with_prob(1.).with_sr(sr)),
+            Box::new(RandResample::default_with_prob(1.).with_sr(sr)),
         ]);
         let mut out = test_sample.clone();
         let mut out_manual = test_sample.clone();
-        write_wav_iter("../out/original.wav", test_sample.iter(), sr, ch)?;
+        write_wav_iter("../out/original.wav", test_sample.iter(), sr as u32, ch)?;
         seed_from_u64(42);
         transforms.transform(&mut (&mut out).into())?;
-        write_wav_iter("../out/compose_all.wav", out.iter(), sr, ch)?;
+        write_wav_iter("../out/compose_all.wav", out.iter(), sr as u32, ch)?;
         seed_from_u64(42);
         for (i, t) in transforms.transforms.iter().enumerate() {
             t.transform(&mut (&mut out_manual).into())?;
             write_wav_iter(
                 format!("../out/compose_{}.wav", i).as_str(),
                 out_manual.iter(),
-                sr,
+                sr as u32,
                 ch,
             )?;
         }
@@ -1298,15 +1294,12 @@ mod tests {
 
     #[test]
     pub fn test_rand_resample() -> Result<()> {
-        setup();
-        let reader = ReadWav::new("../assets/clean_freesound_33711.wav")?;
-        let sr = reader.sr as u32;
-        let mut test_sample = reader.samples_arr2()?;
+        let (mut test_sample, sr) = setup();
         let ch = test_sample.len_of(Axis(0)) as u16;
         seed_from_u64(42);
-        let rand_resample = RandResample::new(1., sr as usize, 0.8, 1.2, 1024);
+        let rand_resample = RandResample::new(1., sr, 0.8, 1.2, 1024);
         rand_resample.transform(&mut (&mut test_sample).into()).unwrap();
-        write_wav_iter("../out/resampled.wav", test_sample.iter(), sr, ch)?;
+        write_wav_iter("../out/resampled.wav", test_sample.iter(), sr as u32, ch)?;
         Ok(())
     }
 
@@ -1341,11 +1334,8 @@ mod tests {
 
     #[test]
     pub fn test_reverb() -> Result<()> {
-        setup();
-        let reader = ReadWav::new("../assets/clean_freesound_33711.wav")?;
-        let sr = reader.sr;
+        let (mut speech, sr) = setup();
         let len = 4 * sr;
-        let mut speech = reader.samples_arr2()?;
         speech.slice_collapse(s![0..1, 0..len]);
         let mut noise = ReadWav::new("../assets/noise_freesound_573577.wav")?.samples_arr2()?;
         noise.slice_axis_inplace(Axis(1), Slice::from(0..len));
@@ -1363,10 +1353,8 @@ mod tests {
 
     #[test]
     pub fn test_clipping() -> Result<()> {
-        setup();
-        let reader = ReadWav::new("../assets/clean_freesound_33711.wav")?;
-        let sr = reader.sr as u32;
-        let test_sample = reader.samples_arr2()?;
+        let (test_sample, sr) = setup();
+        let sr = sr as u32;
         let mut test_sample_c = test_sample.clone();
         let ch = test_sample.len_of(Axis(0)) as u16;
         let tsnr = 3.; // Test with 3dB
@@ -1411,10 +1399,7 @@ mod tests {
 
     #[test]
     pub fn test_filters() -> Result<()> {
-        setup();
-        let reader = ReadWav::new("../assets/clean_freesound_33711.wav")?;
-        let sr = reader.sr;
-        let s_orig = reader.samples_arr2()?;
+        let (s_orig, sr) = setup();
         let ch = s_orig.len_of(Axis(0)) as u16;
         let f = 1000.;
         let gain = -18.;
@@ -1460,10 +1445,7 @@ mod tests {
 
     #[test]
     pub fn test_air_absorption() -> Result<()> {
-        setup();
-        let reader = ReadWav::new("../assets/clean_freesound_33711.wav").unwrap();
-        let sr = reader.sr;
-        let sample = reader.samples_arr2().unwrap();
+        let (sample, sr) = setup();
         let fft_size = sr / 50;
         let hop_size = fft_size / 2;
         let mut state = DFState::new(sr, fft_size, hop_size, 1, 1);
